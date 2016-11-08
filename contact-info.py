@@ -14,9 +14,11 @@ def get_password(filename):
 
 
 def login(session):
-    data = {"username": 'reedcwilson', 'password': get_password('ldspass')}
+    dirpath = os.path.dirname(os.path.realpath(__file__))
+    filename = os.path.join(dirpath, 'ldspass')
+    data = {"username": 'reedcwilson', 'password': get_password(filename)}
     resp = session.post(
-            'https://signin.lds.org/login.html', 
+            'https://signin.lds.org/login.html',
             data=data
             )
 
