@@ -5,6 +5,7 @@ import json
 import regex
 import sys
 import os
+import getopt
 
 
 def get_password(filename):
@@ -98,7 +99,18 @@ def find_member(name, members, error_length):
     return matches
 
 
-def main(name, error_length):
+def strip_matches(matches):
+    new_matches = []
+    for match in matches:
+        new_match = {}
+        for param in ['firstLast', 'phone', 'email']:
+            if param in match:
+                new_match[param] = match[param]
+        new_matches.append(new_match)
+    return new_matches
+
+
+def main(name, error_length, full_contact):
     members = get_cached_members()
     if not members:
         with requests.Session() as s:
@@ -108,14 +120,43 @@ def main(name, error_length):
             members = get_members(directory)
             write_members(members)
     matches = find_member(name, members, error_length)
-    print json.dumps(matches)
+    if full_contact:
+        print json.dumps(matches)
+    else:
+        matches = strip_matches(matches)
+        print json.dumps(matches)
+
+
+
+def print_usage(exit):
+    print (
+            "./contact-info.py "
+            "[-e <errorlevel> (default: 3)] "
+            "[-f full contact info (default: False)]"
+            )
+    sys.exit(exit)
+
+
+def get_args(argv):
+    errorlevel = 3
+    fullcontact = False
+    try:
+        opts, args = getopt.getopt(argv[1:], "he:f")
+    except getopt.GetoptError:
+        print_usage(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print_usage(0)
+        elif opt in ("-e"):
+            errorlevel = arg
+        elif opt in ("-f"):
+            fullcontact = True
+    return errorlevel, fullcontact, args
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print "You must supply a name to search for"
-        sys.exit()
-    error_length = 3
-    if len(sys.argv) == 3:
-        error_length = sys.argv[2]
-    main(sys.argv[1], error_length)
+        print_usage(2)
+    error_length, full_contact, names = get_args(sys.argv)
+    for name in names:
+        main(name, error_length, full_contact)
