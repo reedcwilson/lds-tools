@@ -8,14 +8,16 @@ import os
 import getopt
 
 
+DIRPATH = os.path.dirname(os.path.realpath(__file__))
+
+
 def get_password(filename):
     with open(filename, 'r') as f:
         return f.read()
 
 
 def login(session):
-    dirpath = os.path.dirname(os.path.realpath(__file__))
-    filename = os.path.join(dirpath, 'ldspass')
+    filename = os.path.join(DIRPATH, 'ldspass')
     data = {"username": 'reedcwilson', 'password': get_password(filename)}
     resp = session.post(
             'https://signin.lds.org/login.html',
@@ -37,7 +39,7 @@ def get_directory(s, unit_id):
 
 
 def write_members(members):
-    with open('members', 'w') as f:
+    with open(os.path.join(DIRPATH, 'members'), 'w') as f:
         f.write(json.dumps(members))
 
 
