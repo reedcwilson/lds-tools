@@ -43,6 +43,25 @@ def write_members(members):
         f.write(json.dumps(members))
 
 
+def write_csv(members):
+    with open(os.path.join(DIRPATH, 'contacts.csv'), 'w') as f:
+        f.write("Name,Given Name,Family Name,Group Membership,E-mail 1 - Value,Phone 1 - Type,Phone 1 - Value\n")
+        for member in members:
+            firstLast = member['firstLast'].replace(',', '') if 'firstLast' in member else ""
+            givenName = member['givenName'] if 'givenName' in member else ""
+            surname = member['surname'] if 'surname' in member else ""
+            email = member['email'] if 'email' in member else ""
+            phone = member['phone'] if 'phone' in member else ""
+            phone = regex.sub("[^0-9]", "", phone)
+            try:
+                # f.write("%s,%s,,%s,,,,,,,,,,,,,,,,,,,,,,,Grove 9th Ward,* ,%s,,,,,Mobile,%s,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n"
+                f.write("%s,%s,%s,Grove 9th Ward,%s,Mobile,%s,\n"
+                        % (firstLast, givenName, surname, email, phone))
+
+            except Exception as e:
+                print firstLast, phone, email
+
+
 def get_cached_members():
     filename = 'members'
     if os.path.exists(filename):
@@ -114,7 +133,7 @@ def strip_matches(matches):
     return new_matches
 
 
-def main(name, error_length, full_contact):
+def main(names, error_length, full_contact, csv):
     members = get_cached_members()
     if not members:
         with requests.Session() as s:
@@ -123,12 +142,16 @@ def main(name, error_length, full_contact):
             directory = get_directory(s, unit_id)
             members = get_members(directory)
             write_members(members)
-    matches = find_member(name, members, error_length)
-    if full_contact:
-        print json.dumps(matches)
-    else:
-        matches = strip_matches(matches)
-        print json.dumps(matches)
+    if csv:
+        write_csv(members)
+        return
+    for name in names:
+        matches = find_member(name, members, error_length)
+        if full_contact:
+            print json.dumps(matches)
+        else:
+            matches = strip_matches(matches)
+            print json.dumps(matches)
 
 
 
@@ -136,6 +159,7 @@ def print_usage(exit):
     print (
             "./contact-info.py "
             "[-e <errorlevel> (default: 3)] "
+            "[-c create contacts.csv (default: False)] "
             "[-f full contact info (default: False)]"
             )
     sys.exit(exit)
@@ -144,8 +168,9 @@ def print_usage(exit):
 def get_args(argv):
     errorlevel = 3
     fullcontact = False
+    csv = False
     try:
-        opts, args = getopt.getopt(argv[1:], "he:f")
+        opts, args = getopt.getopt(argv[1:], "he:fc")
     except getopt.GetoptError:
         print_usage(2)
     for opt, arg in opts:
@@ -155,12 +180,13 @@ def get_args(argv):
             errorlevel = arg
         elif opt in ("-f"):
             fullcontact = True
-    return errorlevel, fullcontact, args
+        elif opt in ("-c"):
+            csv = True
+    return errorlevel, fullcontact, csv, args
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print_usage(2)
-    error_length, full_contact, names = get_args(sys.argv)
-    for name in names:
-        main(name, error_length, full_contact)
+    error_length, full_contact, csv, names = get_args(sys.argv)
+    main(names, error_length, full_contact, csv)
