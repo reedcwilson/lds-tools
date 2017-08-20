@@ -47,17 +47,23 @@ def write_csv(members):
     with open(os.path.join(DIRPATH, 'contacts.csv'), 'w') as f:
         f.write("Name,Given Name,Family Name,Group Membership,E-mail 1 - Value,Phone 1 - Type,Phone 1 - Value\n")
         for member in members:
-            firstLast = member['firstLast'].replace(',', '') if 'firstLast' in member else ""
+            backupFirstLast = member['firstLast'].replace(',', '') if 'firstLast' in member else ""
             givenName = member['givenName'] if 'givenName' in member else ""
             surname = member['surname'] if 'surname' in member else ""
+            first = None
+            last = None
+            if 'preferredName' in member:
+                first, last = get_first_last(member['preferredName'])
+            else:
+                first, last = givenName, surname
+            firstLast = "{} {}".format(first, last) if 'preferredName' in member else backupFirstLast
             email = member['email'] if 'email' in member else ""
             phone = member['phone'] if 'phone' in member else ""
             phone = regex.sub("[^0-9]", "", phone)
             try:
                 # f.write("%s,%s,,%s,,,,,,,,,,,,,,,,,,,,,,,Grove 9th Ward,* ,%s,,,,,Mobile,%s,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,\n"
                 f.write("%s,%s,%s,Grove 9th Ward,%s,Mobile,%s,\n"
-                        % (firstLast, givenName, surname, email, phone))
-
+                        % (firstLast, first, last, email, phone))
             except Exception as e:
                 print(firstLast, phone, email)
 
@@ -75,11 +81,16 @@ def normalize_name(name):
 
 
 def get_first_last(name):
-    if name.count(' ') > 1:
+    num = name.count(' ')
+    if num > 1:
         first = name.index(' ')
         last = name.rfind(' ')
-        return '%s %s' % (name[:first], name[last+1:])
-    return name
+        return name[:first], name[last+1:]
+    elif num == 1:
+        parts = name.split()
+        return parts[0], parts[1]
+    else:
+        return name, ""
 
 
 def add_member(member, members, household):
@@ -90,7 +101,7 @@ def add_member(member, members, household):
         phone = 'phone'
         if name in person:
             person[name] = normalize_name(person[name])
-            person['firstLast'] = get_first_last(person[name])
+            person['firstLast'] = '{} {}'.format(get_first_last(person[name]))
         if preferred in person:
             person[preferred] = normalize_name(person[preferred])
         if phone not in person and phone in household:
