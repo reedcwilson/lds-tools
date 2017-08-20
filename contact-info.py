@@ -19,7 +19,7 @@ def get_password(filename):
 def login(session):
     filename = os.path.join(DIRPATH, 'ldspass')
     data = {"username": 'reedcwilson', 'password': get_password(filename)}
-    resp = session.post(
+    session.post(
             'https://signin.lds.org/login.html',
             data=data
             )
@@ -59,7 +59,7 @@ def write_csv(members):
                         % (firstLast, givenName, surname, email, phone))
 
             except Exception as e:
-                print firstLast, phone, email
+                print(firstLast, phone, email)
 
 
 def get_cached_members():
@@ -153,20 +153,19 @@ def main(names, error_length, full_contact, csv):
     for name in names:
         matches = find_member(name, members, error_length)
         if full_contact:
-            print json.dumps(matches)
+            print(json.dumps(matches))
         else:
             matches = strip_matches(matches)
-            print json.dumps(matches)
-
+            print(json.dumps(matches))
 
 
 def print_usage(exit):
-    print (
+    print((
             "./contact-info.py "
             "[-e <errorlevel> (default: 3)] "
             "[-c create contacts.csv (default: False)] "
             "[-f full contact info (default: False)]"
-            )
+            ))
     sys.exit(exit)
 
 
