@@ -87,11 +87,14 @@ def add_member(member, members, household):
         person = household[member]
         name = 'fullName'
         preferred = 'preferredName'
+        phone = 'phone'
         if name in person:
             person[name] = normalize_name(person[name])
             person['firstLast'] = get_first_last(person[name])
         if preferred in person:
             person[preferred] = normalize_name(person[preferred])
+        if phone not in person and phone in household:
+            person[phone] = household[phone]
         members.append(person)
 
 
@@ -99,6 +102,8 @@ def get_members(directory):
     members = []
     spouse = 'spouse'
     head = 'headOfHouse'
+    with open('directory.json', 'w') as f:
+        f.write(json.dumps(directory))
     for household in directory['households']:
         add_member(head, members, household)
         add_member(spouse, members, household)
