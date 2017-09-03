@@ -101,7 +101,8 @@ def add_member(member, members, household):
         phone = 'phone'
         if name in person:
             person[name] = normalize_name(person[name])
-            person['firstLast'] = '{} {}'.format(get_first_last(person[name]))
+            first, last = get_first_last(person[name])
+            person['firstLast'] = '{} {}'.format(first, last)
         if preferred in person:
             person[preferred] = normalize_name(person[preferred])
         if phone not in person and phone in household:
