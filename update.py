@@ -1,352 +1,279 @@
 #!/usr/bin/python
-#
-# Copyright (C) 2008 Google Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
-
-__author__ = 'api.jscudder (Jeffrey Scudder)'
-
-
-import sys
-import getopt
-import getpass
 import atom
+import os
+import requests
+import regex
 import gdata.contacts.data
 import gdata.contacts.client
+from oauth2client import client
+from oauth2client import tools
+from oauth2client.file import Storage
 
 
-class ContactsSample(object):
-  """ContactsSample object demonstrates operations with the Contacts feed."""
+try:
+    import argparse
+    parser = argparse.ArgumentParser(parents=[tools.argparser])
+    parser.add_argument('--path')
+    parser.add_argument('--token')
+    flags = parser.parse_args()
+except ImportError:
+    flags = None
 
-  def __init__(self, email, password):
-    """Constructor for the ContactsSample object.
-    
-    Takes an email and password corresponding to a gmail account to
-    demonstrate the functionality of the Contacts feed.
-    
-    Args:
-      email: [string] The e-mail address of the account to use for the sample.
-      password: [string] The password corresponding to the account specified by
-          the email parameter.
-    
-    Yields:
-      A ContactsSample object used to run the sample demonstrating the
-      functionality of the Contacts feed.
-    """
-    self.gd_client = gdata.contacts.client.ContactsClient(source='GoogleInc-ContactsPythonSample-1')
-    self.gd_client.ClientLogin(email, password, self.gd_client.source)
+# If modifying these scopes, delete your previously saved credentials
+# at ~/.credentials/gmail-python-quickstart.json
+SCOPES = 'https://www.google.com/m8/feeds/'
+CLIENT_SECRET_FILE = 'client_secret.json'
+APPLICATION_NAME = 'Ward Contacts Sync'
 
-  def PrintFeed(self, feed, ctr=0):
-    """Prints out the contents of a feed to the console.
-   
-    Args:
-      feed: A gdata.contacts.ContactsFeed instance.
-      ctr: [int] The number of entries in this feed previously printed. This
-          allows continuous entry numbers when paging through a feed.
-    
-    Returns:
-      The number of entries printed, including those previously printed as
-      specified in ctr. This is for passing as an argument to ctr on
-      successive calls to this method.
-    
-    """
-    if not feed.entry:
-      print('\nNo entries in feed.\n')
-      return 0
-    for i, entry in enumerate(feed.entry):
-      print('\n%s %s' % (ctr+i+1, entry.title.text))
-      if entry.content:
-        print('    %s' % (entry.content.text))
-      for email in entry.email:
-        if email.primary and email.primary == 'true':
-          print('    %s' % (email.address))
-      # Show the contact groups that this contact is a member of.
-      for group in entry.group_membership_info:
-        print('    Member of group: %s' % (group.href))
-      # Display extended properties.
-      for extended_property in entry.extended_property:
-        if extended_property.value:
-          value = extended_property.value
+DIRPATH = os.path.join(os.getenv("HOME"), 'code', 'secrets', 'awspilot')
+
+
+def chunks(arr, n):
+    """Yield successive n-sized chunks from arr."""
+    for i in xrange(0, len(arr), n):
+        yield arr[i:i + n]
+
+
+def get_credentials():
+    home_dir = os.path.expanduser('~')
+    credential_dir = os.path.join(home_dir, '.credentials')
+    if not os.path.exists(credential_dir):
+        os.makedirs(credential_dir)
+    credential_path = os.path.join(credential_dir,
+                                   'lds_contacts_sync.json')
+    store = Storage(credential_path)
+    credentials = store.get()
+    if not credentials or credentials.invalid:
+        flow = client.flow_from_clientsecrets(
+            CLIENT_SECRET_FILE,
+            SCOPES)
+        flow.user_agent = APPLICATION_NAME
+        if flags:
+            credentials = tools.run_flow(flow, store, flags)
         else:
-          value = extended_property.GetXmlBlob()
-        print('    Extended Property %s: %s' % (extended_property.name, value))
-    return len(feed.entry) + ctr
+            # Needed only for compatibility with Python 2.6
+            credentials = tools.run(flow, store)
+        print('Storing credentials to ' + credential_path)
+    return credentials
 
-  def PrintPaginatedFeed(self, feed, print_method):
-    """ Print all pages of a paginated feed.
-    
-    This will iterate through a paginated feed, requesting each page and
-    printing the entries contained therein.
-    
-    Args:
-      feed: A gdata.contacts.ContactsFeed instance.
-      print_method: The method which will be used to print each page of the
-          feed. Must accept these two named arguments:
-              feed: A gdata.contacts.ContactsFeed instance.
-              ctr: [int] The number of entries in this feed previously
-                  printed. This allows continuous entry numbers when paging
-                  through a feed.
-    """
-    ctr = 0
-    while feed:
-      # Print contents of current feed
-      ctr = print_method(feed=feed, ctr=ctr)
-      # Prepare for next feed iteration
-      next = feed.GetNextLink()
-      feed = None
-      if next:
-        if self.PromptOperationShouldContinue():
-          # Another feed is available, and the user has given us permission
-          # to fetch it
-          feed = self.gd_client.GetContacts(uri=next.href)
+
+class Lds(object):
+
+    def __init__(self):
+        self.members = []
+
+    def get_password(self, filename):
+        with open(filename, 'r') as f:
+            return f.read()
+
+    def lds_login(self, session):
+        filename = os.path.join(DIRPATH, 'ldspass')
+        data = {
+                "username": 'reedcwilson',
+                'password': self.get_password(filename)
+                }
+        session.post(
+                'https://signin.lds.org/login.html',
+                data=data)
+
+    def get_profile_user(self, session):
+        resp = session.get(
+                'https://www.lds.org/mobiledirectory/services/v2/ldstools/current-user-detail')
+        my_id = resp.json()["individualId"]
+        unit_id = resp.json()["homeUnitNbr"]
+        return my_id, unit_id
+
+    def get_ward_directory(self, s, unit_id):
+        resp = s.get(
+                "https://www.lds.org/mobiledirectory/services/v2/ldstools/member-detaillist-with-callings/%s" % unit_id)
+        return resp.json()
+
+    def normalize_name(self, name):
+        idx = name.index(',')
+        return ('%s %s' % (name[idx+1:], name[:idx])).strip()
+
+    def get_first_last(self, name):
+        num = name.count(' ')
+        if num > 1:
+            first = name.index(' ')
+            last = name.rfind(' ')
+            return name[:first], name[last+1:]
+        elif num == 1:
+            parts = name.split()
+            return parts[0], parts[1]
         else:
-          # User has asked us to terminate
-          feed = None
+            return name, ""
 
-  def PromptOperationShouldContinue(self):
-    """ Display a "Continue" prompt.
-    
-    This give is used to give users a chance to break out of a loop, just in
-    case they have too many contacts/groups.
-    
-    Returns:
-      A boolean value, True if the current operation should continue, False if
-      the current operation should terminate.
-    """
-    while True:
-      input = raw_input("Continue [Y/n]? ")
-      if input is 'N' or input is 'n':
-        return False
-      elif input is 'Y' or input is 'y' or input is '':
-        return True
+    def add_member(self, member, household):
+        if member in household:
+            person = household[member]
+            name = 'fullName'
+            preferred = 'preferredName'
+            phone = 'phone'
+            if name in person:
+                person[name] = self.normalize_name(person[name])
+                first, last = self.get_first_last(person[name])
+                person['firstLast'] = u'{} {}'.format(first, last)
+            if preferred in person:
+                person[preferred] = self.normalize_name(person[preferred])
+            if phone not in person and phone in household:
+                person[phone] = household[phone]
+            self.members.append(person)
 
-  def ListAllContacts(self):
-    """Retrieves a list of contacts and displays name and primary email."""
-    feed = self.gd_client.GetContacts()
-    self.PrintPaginatedFeed(feed, self.PrintContactsFeed)
+    def get_members(self):
+        if len(self.members) == 0:
+            with requests.Session() as s:
+                self.lds_login(s)
+                my_id, unit_id = self.get_profile_user(s)
+                directory = self.get_ward_directory(s, unit_id)
+                spouse = 'spouse'
+                head = 'headOfHouse'
+                for household in directory['households']:
+                    self.add_member(head, household)
+                    self.add_member(spouse, household)
+        return self.members
 
-  def PrintGroupsFeed(self, feed, ctr):
-    if not feed.entry:
-      print('\nNo groups in feed.\n')
-      return 0
-    for i, entry in enumerate(feed.entry):
-      print('\n%s %s' % (ctr+i+1, entry.title.text))
-      if entry.content:
-        print('    %s' % (entry.content.text))
-      # Display the group id which can be used to query the contacts feed.
-      print('    Group ID: %s' % entry.id.text)
-      # Display extended properties.
-      for extended_property in entry.extended_property:
-        if extended_property.value:
-          value = extended_property.value
+    def get_member_parts(self, member):
+        backupFirstLast = member['first_last'].replace(',', '') if 'first_last' in member else ""
+        givenName = member['givenName'] if 'givenName' in member else ""
+        surname = member['surname'] if 'surname' in member else ""
+        first = None
+        last = None
+        if 'preferredName' in member:
+            first, last = self.get_first_last(member['preferredName'])
         else:
-          value = extended_property.GetXmlBlob()
-        print('    Extended Property %s: %s' % (extended_property.name, value))
-    return len(feed.entry) + ctr
+            first, last = givenName, surname
+        first_last = u"{} {}".format(first, last) if 'preferredName' in member else backupFirstLast
+        email = member['email'] if 'email' in member else ""
+        phone = member['phone'] if 'phone' in member else ""
+        phone = regex.sub("[^0-9]", "", phone)
+        return first_last, first, last, email, phone
 
-  def PrintContactsFeed(self, feed, ctr):
-    if not feed.entry:
-      print('\nNo contacts in feed.\n')
-      return 0
-    for i, entry in enumerate(feed.entry):
-      if not entry.name is None:
-        family_name = entry.name.family_name is None and " " or entry.name.family_name.text
-        full_name = entry.name.full_name is None and " " or entry.name.full_name.text
-        given_name = entry.name.given_name is None and " " or entry.name.given_name.text
-        print('\n%s %s: %s - %s' % (ctr+i+1, full_name, given_name, family_name))
-      else:
-        print('\n%s %s (title)' % (ctr+i+1, entry.title.text))
-      if entry.content:
-        print('    %s' % (entry.content.text))
-      for p in entry.structured_postal_address:
-        print('    %s' % (p.formatted_address.text))
-      # Display the group id which can be used to query the contacts feed.
-      print('    Group ID: %s' % entry.id.text)
-      # Display extended properties.
-      for extended_property in entry.extended_property:
-        if extended_property.value:
-          value = extended_property.value
-        else:
-          value = extended_property.GetXmlBlob()
-        print('    Extended Property %s: %s' % (extended_property.name, value))
-      for user_defined_field in entry.user_defined_field:
-        print('    User Defined Field %s: %s' % (user_defined_field.key, user_defined_field.value))
-    return len(feed.entry) + ctr
 
-  def ListAllGroups(self):
-    feed = self.gd_client.GetGroups()
-    self.PrintPaginatedFeed(feed, self.PrintGroupsFeed)
+def patched_post(client, entry, uri, auth_token=None, converter=None, desired_class=None, **kwargs):
+    if converter is None and desired_class is None:
+        desired_class = entry.__class__
+    http_request = atom.http_core.HttpRequest()
+    entry_string = entry.to_string(
+        gdata.client.get_xml_version(client.api_version))
+    entry_string = entry_string.replace('ns1', 'gd')
+    http_request.add_body_part(
+        entry_string,
+        'application/atom+xml')
+    return client.request(
+        method='POST',
+        uri=uri,
+        auth_token=auth_token,
+        http_request=http_request,
+        converter=converter,
+        desired_class=desired_class,
+        **kwargs)
 
-  def CreateMenu(self):
-    """Prompts that enable a user to create a contact."""
-    name = raw_input('Enter contact\'s name: ')
-    notes = raw_input('Enter notes for contact: ')
-    primary_email = raw_input('Enter primary email address: ')
 
-    new_contact = gdata.contacts.data.ContactEntry(name=gdata.data.Name(full_name=gdata.data.FullName(text=name)))
-    new_contact.content = atom.data.Content(text=notes)
-    # Create a work email address for the contact and use as primary. 
-    new_contact.email.append(gdata.data.Email(address=primary_email, 
-        primary='true', rel=gdata.data.WORK_REL))
-    entry = self.gd_client.CreateContact(new_contact)
+class ContactsManager(object):
 
-    if entry:
-      print('Creation successful!')
-      print('ID for the new contact:', entry.id.text)
-    else:
-      print('Upload error.')
+    def __init__(self):
+        token = gdata.gauth.OAuth2TokenFromCredentials(get_credentials())
+        self.client = gdata.contacts.client.ContactsClient()
+        self.client = token.authorize(self.client)
 
-  def QueryMenu(self):
-    """Prompts for updated-min query parameters and displays results."""
-    updated_min = raw_input(
-        'Enter updated min (example: 2007-03-16T00:00:00): ')
-    query = gdata.contacts.client.ContactsQuery()
-    query.updated_min = updated_min
-    feed = self.gd_client.GetContacts(q=query)
-    self.PrintFeed(feed)
+    def get_contacts(self):
+        query = gdata.contacts.client.ContactsQuery()
+        query.max_results = 2000
+        feed = self.client.GetContacts(q=query)
+        return feed.entry
 
-  def QueryGroupsMenu(self):
-    """Prompts for updated-min query parameters and displays results."""
-    updated_min = raw_input(
-        'Enter updated min (example: 2007-03-16T00:00:00): ')
-    query = gdata.contacts.client.ContactsQuery(feed='/m8/feeds/groups/default/full')
-    query.updated_min = updated_min
-    feed = self.gd_client.GetGroups(q=query)
-    self.PrintGroupsFeed(feed, 0)
-   
-  def _SelectContact(self):
-    feed = self.gd_client.GetContacts()
-    self.PrintFeed(feed)
-    selection = 5000
-    while selection > len(feed.entry)+1 or selection < 1:
-      selection = int(raw_input(
-          'Enter the number for the contact you would like to modify: '))
-    return feed.entry[selection-1]
+    def delete_group_contacts(self, name, contacts):
+        feed = self.client.GetGroups()
+        group = None
+        for g in feed.entry:
+            if g.title.text.lower() == name.lower():
+                group = g
+                break
+        if not group:
+            raise Exception("Group does not exist")
+        contacts_to_delete = []
+        for contact in contacts:
+            for group_membership_info in contact.group_membership_info:
+                if group_membership_info.href == group.id.text:
+                    contacts_to_delete.append(contact)
+                    break
+        batches = chunks(contacts_to_delete, 50)
+        for batch in batches:
+            request_feed = gdata.contacts.data.ContactsFeed()
+            for contact in batch:
+                request_feed.AddDelete(
+                    entry=contact,
+                    batch_id_string="delete")
+            patched_post(
+                self.client,
+                request_feed,
+                'https://www.google.com/m8/feeds/contacts/default/full/batch')
+        return group
 
-  def UpdateContactMenu(self):
-    selected_entry = self._SelectContact()
-    new_name = raw_input('Enter a new name for the contact: ')
-    if not selected_entry.name:
-      selected_entry.name = gdata.data.Name()
-    selected_entry.name.full_name = gdata.data.FullName(text=new_name)
-    self.gd_client.Update(selected_entry)
+    def create_contact(self, first_last, first, last, email, phone, group):
+        contact = gdata.contacts.data.ContactEntry()
+        contact.name = gdata.data.Name(
+            given_name=gdata.data.GivenName(text=first),
+            family_name=gdata.data.FamilyName(text=last),
+            full_name=gdata.data.FullName(text=first_last))
+        # Set the contact's email addresses.
+        if email:
+            contact.email.append(
+                gdata.data.Email(
+                    address=email,
+                    primary='true',
+                    rel=gdata.data.HOME_REL,
+                    display_name=first_last))
+        # Set the contact's phone numbers.
+        if phone:
+            contact.phone_number.append(
+                gdata.data.PhoneNumber(
+                    text=phone,
+                    rel=gdata.data.MOBILE_REL,
+                    primary='true'))
+        # Set the contact's group membership
+        contact.group_membership_info.append(
+            gdata.contacts.data.GroupMembershipInfo(href=group.id.text))
+        return contact
 
-  def DeleteContactMenu(self):
-    selected_entry = self._SelectContact()
-    self.gd_client.Delete(selected_entry)
+    def add_contacts(self, contact_entries):
+        batches = chunks(contact_entries, 50)
+        for batch in batches:
+            request_feed = gdata.contacts.data.ContactsFeed()
+            for contact in batch:
+                request_feed.AddInsert(entry=contact, batch_id_string="create")
+            patched_post(
+                self.client,
+                request_feed,
+                'https://www.google.com/m8/feeds/contacts/default/full/batch')
 
-  def PrintMenu(self):
-    """Displays a menu of options for the user to choose from."""
-    print ('\nContacts Sample\n'
-           '1) List all of your contacts.\n'
-           '2) Create a contact.\n'
-           '3) Query contacts on updated time.\n'
-           '4) Modify a contact.\n'
-           '5) Delete a contact.\n'
-           '6) List all of your contact groups.\n'
-           '7) Query your groups on updated time.\n'
-           '8) Exit.\n')
 
-  def GetMenuChoice(self, max):
-    """Retrieves the menu selection from the user.
-    
-    Args:
-      max: [int] The maximum number of allowed choices (inclusive)
-      
-    Returns:
-      The integer of the menu item chosen by the user.
-    """
-    while True:
-      input = raw_input('> ')
-
-      try:
-        num = int(input)
-      except ValueError:
-        print('Invalid choice. Please choose a value between 1 and', max)
-        continue
-      
-      if num > max or num < 1:
-        print('Invalid choice. Please choose a value between 1 and', max)
-      else:
-        return num
-
-  def Run(self):
-    """Prompts the user to choose funtionality to be demonstrated."""
-    try:
-      while True:
-
-        self.PrintMenu()
-
-        choice = self.GetMenuChoice(8)
-
-        if choice == 1:
-          self.ListAllContacts()
-        elif choice == 2:
-          self.CreateMenu()
-        elif choice == 3:
-          self.QueryMenu()
-        elif choice == 4:
-          self.UpdateContactMenu()
-        elif choice == 5:
-          self.DeleteContactMenu()
-        elif choice == 6:
-          self.ListAllGroups()
-        elif choice == 7:
-          self.QueryGroupsMenu()
-        elif choice == 8:
-          return
-
-    except KeyboardInterrupt:
-      print('\nGoodbye.')
-      return
+def already_exists(contacts, phone):
+    return False
 
 
 def main():
-  """Demonstrates use of the Contacts extension using the ContactsSample object."""
-  # Parse command line options
-  try:
-    opts, args = getopt.getopt(sys.argv[1:], '', ['user=', 'pw='])
-  except getopt.error as msg:
-    print('python contacts_example.py --user [username] --pw [password]')
-    sys.exit(2)
-
-  user = ''
-  pw = ''
-  # Process options
-  for option, arg in opts:
-    if option == '--user':
-      user = arg
-    elif option == '--pw':
-      pw = arg
-
-  while not user:
-    print('NOTE: Please run these tests only with a test account.')
-    user = raw_input('Please enter your username: ')
-  while not pw:
-    pw = getpass.getpass()
-    if not pw:
-      print('Password cannot be blank.')
-
-
-  try:
-    sample = ContactsSample(user, pw)
-  except gdata.client.BadAuthentication:
-    print('Invalid user credentials given.')
-    return
-
-  sample.Run()
+    manager = ContactsManager()
+    lds = Lds()
+    contacts = manager.get_contacts()
+    group = manager.delete_group_contacts('ward', contacts)
+    members = lds.get_members()
+    contacts = []
+    for member in members:
+        first_last, first, last, email, phone = lds.get_member_parts(member)
+        if not already_exists(contacts, phone):
+            new_contact = manager.create_contact(
+                first_last,
+                first,
+                last,
+                email,
+                phone,
+                group)
+            contacts.append(new_contact)
+    manager.add_contacts(contacts)
 
 
 if __name__ == '__main__':
-  main()
+    main()
