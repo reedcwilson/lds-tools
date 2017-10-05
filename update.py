@@ -1,9 +1,11 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import atom
 import os
 import requests
 import regex
+import datetime
 import gdata.contacts.data
 import gdata.contacts.client
 from oauth2client import client
@@ -25,8 +27,24 @@ except ImportError:
 SCOPES = 'https://www.google.com/m8/feeds/'
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'Ward Contacts Sync'
+USERNAME = 'reedcwilson'
 
 DIRPATH = os.path.join(os.getenv("HOME"), 'code', 'secrets', 'awspilot')
+
+
+def get_embedded_filename(filename):
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller >= 1.6
+        os.chdir(sys._MEIPASS)
+        filename = os.path.join(sys._MEIPASS, filename)
+    elif '_MEIPASS2' in os.environ:
+        # PyInstaller < 1.6 (tested on 1.5 only)
+        os.chdir(os.environ['_MEIPASS2'])
+        filename = os.path.join(os.environ['_MEIPASS2'], filename)
+    else:
+        os.chdir(os.path.dirname(sys.argv[0]))
+        filename = os.path.join(os.path.dirname(sys.argv[0]), filename)
+    return filename
 
 
 def chunks(arr, n):
@@ -46,7 +64,7 @@ def get_credentials():
     credentials = store.get()
     if not credentials or credentials.invalid:
         flow = client.flow_from_clientsecrets(
-            CLIENT_SECRET_FILE,
+            get_embedded_filename(CLIENT_SECRET_FILE),
             SCOPES)
         flow.user_agent = APPLICATION_NAME
         if flags:
@@ -70,7 +88,7 @@ class Lds(object):
     def lds_login(self, session):
         filename = os.path.join(DIRPATH, 'ldspass')
         data = {
-                "username": 'reedcwilson',
+                "username": USERNAME,
                 'password': self.get_password(filename)
                 }
         session.post(
@@ -279,6 +297,7 @@ def main():
                 group)
             contacts.append(new_contact)
     manager.add_contacts(contacts)
+    print "finished: {}".format(datetime.datetime.now().strftime("%B %d, %Y %I:%M %p"))
 
 
 if __name__ == '__main__':
