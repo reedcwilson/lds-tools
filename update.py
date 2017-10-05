@@ -250,20 +250,26 @@ class ContactsManager(object):
                 'https://www.google.com/m8/feeds/contacts/default/full/batch')
 
 
-def already_exists(contacts, phone):
-    return False
+def numberify(contacts):
+    numbers = {}
+    for contact in contacts:
+        for number in contact.phone_number:
+            numbers[number.text] = contact.name.full_name.text
+    return numbers
 
 
 def main():
     manager = ContactsManager()
     lds = Lds()
-    contacts = manager.get_contacts()
-    group = manager.delete_group_contacts('ward', contacts)
+    google_contacts = manager.get_contacts()
+    group = manager.delete_group_contacts('ward', google_contacts)
+    google_contacts = manager.get_contacts()
+    phone_numbers = numberify(google_contacts)
     members = lds.get_members()
     contacts = []
     for member in members:
         first_last, first, last, email, phone = lds.get_member_parts(member)
-        if not already_exists(contacts, phone):
+        if phone not in phone_numbers:
             new_contact = manager.create_contact(
                 first_last,
                 first,
