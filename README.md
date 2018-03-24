@@ -6,3 +6,5 @@ Scripts to mine information from LDS.org
 information of the people who match the string. There is an optional number of
 errors argument that will allow you to be more or less strict with the matching.
 The default is 3.
+
+Note: You will need to download the client_secret.json from the Google API Console.
