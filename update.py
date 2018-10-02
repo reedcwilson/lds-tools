@@ -29,7 +29,7 @@ CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'Ward Contacts Sync'
 USERNAME = 'reedcwilson'
 
-DIRPATH = os.path.join(os.getenv("HOME"), 'code', 'secrets', 'awspilot')
+DIRPATH = os.sep + os.path.join('Volumes', 'Secrets')
 
 
 def get_embedded_filename(filename):
