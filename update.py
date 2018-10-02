@@ -297,7 +297,7 @@ def main():
                 group)
             contacts.append(new_contact)
     manager.add_contacts(contacts)
-    print "finished: {}".format(datetime.datetime.now().strftime("%B %d, %Y %I:%M %p"))
+    print("finished: {}".format(datetime.datetime.now().strftime("%B %d, %Y %I:%M %p")))
 
 
 if __name__ == '__main__':
