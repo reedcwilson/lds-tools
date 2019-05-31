@@ -4,14 +4,17 @@
 <dict>
 	<key>Label</key>
 	<string>com.reedcwilson.synclds</string>
-	<key>Program</key>
-  <string>/Users/rwilson/code/lds-tools/dist/update/update</string>
+	<key>ProgramArguments</key>
+  <array>
+    <string>#HOME/.pyenv/versions/2.7.9/bin/python</string>
+    <string>#PROJECT/update.py</string>
+  </array>
 	<key>RunAtLoad</key>
 	<true/>
   <key>StandardOutPath</key>
-  <string>/Users/rwilson/code/lds-tools/out.log</string>
+  <string>#PROJECT/out.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/rwilson/code/lds-tools/out.log</string>
+  <string>#PROJECT/out.log</string>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Weekday</key>

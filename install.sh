@@ -3,8 +3,8 @@
 name=synclds
 
 filename=com.reedcwilson.${name}.plist
-pyinstaller -y update.spec
+path=$(dirname $(realpath $0))
 launchctl unload ~/Library/LaunchAgents/${filename}
-cp ${filename} ~/Library/LaunchAgents
+cat $filename | sed "s|#HOME|${HOME}|g" | sed "s|#PROJECT|${path}|g" > ~/Library/LaunchAgents/${filename}
 launchctl load ~/Library/LaunchAgents/${filename}
 launchctl list | grep ${name}

@@ -9,18 +9,26 @@ The default is 3.
 
 Note: You will need to download the client_secret.json from the Google API Console.
 
-## install
+## Install
 
-- Use python 2.7.9
+### Use Python 2.7.9
+The Google Contacts libraries are finicky and I have only got things working on
+a particular version.
 
 ```
 env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install -v 2.7.9
 ```
 
-- install packages
+### Install Packages
 
 ```
-pip install gdata requests regex pyinstaller oauth2client
+pip install gdata requests regex oauth2client selenium
 ```
 
-- run `install.sh`
+### Ensure Chrome WebDriver
+You need to make sure that the Chrome WebDriver is downloaded to the root of the
+project somewhere in the system path for selenium to be able to work. Follow
+[this guide](http://chromedriver.chromium.org/getting-started) to download the
+right version.
+
+### Run `install.sh`

@@ -3,6 +3,7 @@
 
 import atom
 import os
+import sys
 import requests
 import regex
 import datetime
@@ -11,7 +12,11 @@ import gdata.contacts.client
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     import argparse
@@ -85,91 +90,84 @@ class Lds(object):
         with open(filename, 'r') as f:
             return f.read()
 
-    def lds_login(self, session):
+    def login(self, s):
         filename = os.path.join(DIRPATH, 'ldspass')
-        data = {
-                "username": USERNAME,
-                'password': self.get_password(filename)
-                }
-        session.post(
-                'https://signin.lds.org/login.html',
-                data=data)
+        password = self.get_password(filename)
+        options = Options()
+        options.add_argument('--headless')
+        exe = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            'chromedriver'
+        )
+        driver = webdriver.Chrome(exe, chrome_options=options)
+        driver.get('https://ident.lds.org/sso/UI/Login')
+        driver.find_element_by_id('IDToken1').send_keys(USERNAME)
+        driver.find_element_by_id('IDToken2').send_keys(password)
+        driver.find_element_by_id('login-submit-button').click()
+        excludes = ['httpOnly', 'expiry']
+        for c in driver.get_cookies():
+            for value in excludes:
+                if value in c:
+                    del(c[value])
+            s.cookies.set(**c)
 
-    def get_profile_user(self, session):
-        resp = session.get(
-                'https://www.lds.org/mobiledirectory/services/v2/ldstools/current-user-detail')
-        my_id = resp.json()["individualId"]
-        unit_id = resp.json()["homeUnitNbr"]
-        return my_id, unit_id
+    def get_unit(self, s):
+        r = s.get('https://directory.lds.org/api/v4/user', verify=False)
+        return r.json()["homeUnits"][0]
 
-    def get_ward_directory(self, s, unit_id):
-        resp = s.get(
-                "https://www.lds.org/mobiledirectory/services/v2/ldstools/member-detaillist-with-callings/%s" % unit_id)
-        return resp.json()
-
-    def normalize_name(self, name):
-        idx = name.index(',')
-        return ('%s %s' % (name[idx+1:], name[:idx])).strip()
+    def get_directory(self, s, unit_id):
+        return s.get(
+            'https://directory.lds.org/api/v4/households',
+            params={
+                'unit': unit_id
+            },
+            verify=False
+        ).json()
 
     def get_first_last(self, name):
         num = name.count(' ')
-        if num > 1:
+        if num >= 1:
             first = name.index(' ')
             last = name.rfind(' ')
             return name[:first], name[last+1:]
-        elif num == 1:
-            parts = name.split()
-            return parts[0], parts[1]
         else:
             return name, ""
 
-    def add_member(self, member, household):
-        if member in household:
-            person = household[member]
-            name = 'fullName'
-            preferred = 'preferredName'
-            phone = 'phone'
-            if name in person:
-                person[name] = self.normalize_name(person[name])
-                first, last = self.get_first_last(person[name])
-                person['firstLast'] = u'{} {}'.format(first, last)
-            if preferred in person:
-                person[preferred] = self.normalize_name(person[preferred])
-            if phone not in person and phone in household:
-                person[phone] = household[phone]
-            self.members.append(person)
+    def augment_first_last(self, member):
+        first, last = self.get_first_last(member['displayName'])
+        member['first_last'] = u'{} {}'.format(first, last)
+        member['first'] = first
+        member['last'] = last
 
     def get_members(self):
         if len(self.members) == 0:
             with requests.Session() as s:
-                self.lds_login(s)
-                my_id, unit_id = self.get_profile_user(s)
-                directory = self.get_ward_directory(s, unit_id)
-                spouse = 'spouse'
-                head = 'headOfHouse'
-                for household in directory['households']:
-                    self.add_member(head, household)
-                    self.add_member(spouse, household)
+                self.login(s)
+                directory = self.get_directory(s, self.get_unit(s))
+                self.members = [m for h in directory for m in h['members']]
+                for m in self.members:
+                    self.augment_first_last(m)
         return self.members
 
-    def get_member_parts(self, member):
-        backupFirstLast = member['first_last'].replace(',', '') if 'first_last' in member else ""
-        givenName = member['givenName'] if 'givenName' in member else ""
-        surname = member['surname'] if 'surname' in member else ""
-        first = None
-        last = None
-        if 'preferredName' in member:
-            first, last = self.get_first_last(member['preferredName'])
-        else:
-            first, last = givenName, surname
-        first_last = u"{} {}".format(first, last) if 'preferredName' in member else backupFirstLast
-        email = member['email'] if 'email' in member else ""
-        phone = member['phone'] if 'phone' in member else ""
+    def get_member_parts(self, m):
+        fl = m['first_last']
+        first = m['first']
+        last = m['last']
+        email = m['email'] if 'email' in m else ""
+        phone = m['phone'] if 'phone' in m else ""
         phone = regex.sub("[^0-9]", "", phone)
-        return first_last, first, last, email, phone
+        return fl, first, last, email, phone
 
 
-def patched_post(client, entry, uri, auth_token=None, converter=None, desired_class=None, **kwargs):
+def patched_post(
+        client,
+        entry,
+        uri,
+        auth_token=None,
+        converter=None,
+        desired_class=None,
+        **kwargs
+):
     if converter is None and desired_class is None:
         desired_class = entry.__class__
     http_request = atom.http_core.HttpRequest()
@@ -287,17 +285,22 @@ def main():
     contacts = []
     for member in members:
         first_last, first, last, email, phone = lds.get_member_parts(member)
-        if phone not in phone_numbers:
-            new_contact = manager.create_contact(
-                first_last,
-                first,
-                last,
-                email,
-                phone,
-                group)
-            contacts.append(new_contact)
+        # if they have contact method
+        if email or phone:
+            # if we don't already have them as a contact
+            if phone not in phone_numbers:
+                new_contact = manager.create_contact(
+                    first_last,
+                    first,
+                    last,
+                    email,
+                    phone,
+                    group)
+                contacts.append(new_contact)
     manager.add_contacts(contacts)
-    print("finished: {}".format(datetime.datetime.now().strftime("%B %d, %Y %I:%M %p")))
+    print("finished: {}".format(
+        datetime.datetime.now().strftime("%B %d, %Y %I:%M %p"))
+    )
 
 
 if __name__ == '__main__':
