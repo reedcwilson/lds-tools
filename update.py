@@ -100,7 +100,7 @@ class Lds(object):
             'chromedriver'
         )
         driver = webdriver.Chrome(exe, chrome_options=options)
-        driver.get('https://ident.lds.org/sso/UI/Login')
+        driver.get('https://ident.churchofjesuschrist.org/sso/UI/Login')
         driver.find_element_by_id('IDToken1').send_keys(USERNAME)
         driver.find_element_by_id('IDToken2').send_keys(password)
         driver.find_element_by_id('login-submit-button').click()
@@ -109,15 +109,20 @@ class Lds(object):
             for value in excludes:
                 if value in c:
                     del(c[value])
+            print(c)
             s.cookies.set(**c)
 
     def get_unit(self, s):
-        r = s.get('https://directory.lds.org/api/v4/user', verify=False)
+        r = s.get(
+            'https://directory.churchofjesuschrist.org/api/v4/user',
+            verify=False
+        )
+        print(r)
         return r.json()["homeUnits"][0]
 
     def get_directory(self, s, unit_id):
         return s.get(
-            'https://directory.lds.org/api/v4/households',
+            'https://directory.churchofjesuschrist.org/api/v4/households',
             params={
                 'unit': unit_id
             },
@@ -275,13 +280,16 @@ def numberify(contacts):
 
 
 def main():
-    manager = ContactsManager()
+    # try to get the members first so we don't delete what we already have just
+    # to fail
     lds = Lds()
+    members = lds.get_members()
+
+    manager = ContactsManager()
     google_contacts = manager.get_contacts()
     group = manager.delete_group_contacts('ward', google_contacts)
     google_contacts = manager.get_contacts()
     phone_numbers = numberify(google_contacts)
-    members = lds.get_members()
     contacts = []
     for member in members:
         first_last, first, last, email, phone = lds.get_member_parts(member)
