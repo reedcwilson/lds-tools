@@ -109,7 +109,6 @@ class Lds(object):
             for value in excludes:
                 if value in c:
                     del(c[value])
-            print(c)
             s.cookies.set(**c)
 
     def get_unit(self, s):
@@ -117,7 +116,6 @@ class Lds(object):
             'https://directory.churchofjesuschrist.org/api/v4/user',
             verify=False
         )
-        print(r)
         return r.json()["homeUnits"][0]
 
     def get_directory(self, s, unit_id):
@@ -306,7 +304,8 @@ def main():
                     group)
                 contacts.append(new_contact)
     manager.add_contacts(contacts)
-    print("finished: {}".format(
+    print("finished adding {} contacts: {}".format(
+        len(contacts),
         datetime.datetime.now().strftime("%B %d, %Y %I:%M %p"))
     )
 
