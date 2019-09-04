@@ -2,6 +2,7 @@ chromedriver
 ldspass
 members
 client_secret.json
+directory.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

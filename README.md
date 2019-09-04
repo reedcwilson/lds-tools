@@ -25,6 +25,18 @@ env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install -v 2.7.9
 pip install gdata requests regex oauth2client selenium
 ```
 
+## CURRENT
+
+- Open Charles so we can capture the responses from
+directory.churchofjesuschrist.org.
+- Navigate to directory.churchofjesuschrist.org
+- Save the response to /api/v4/households?unit=${unit_id} in a file named
+`directory.json` in the root of the project
+- run `python update.py` to sync contacts
+
+
+## OLD
+
 ### Ensure Chrome WebDriver
 You need to make sure that the Chrome WebDriver is downloaded to the root of the
 project somewhere in the system path for selenium to be able to work. Follow

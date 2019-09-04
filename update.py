@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import atom
+import json
 import os
 import sys
-import requests
+# import requests
 import regex
 import datetime
 import gdata.contacts.data
@@ -12,8 +13,8 @@ import gdata.contacts.client
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+# from selenium import webdriver
+# from selenium.webdriver.chrome.options import Options
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -90,42 +91,54 @@ class Lds(object):
         with open(filename, 'r') as f:
             return f.read()
 
-    def login(self, s):
-        filename = os.path.join(DIRPATH, 'ldspass')
-        password = self.get_password(filename)
-        options = Options()
-        options.add_argument('--headless')
-        exe = os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            'chromedriver'
-        )
-        driver = webdriver.Chrome(exe, chrome_options=options)
-        driver.get('https://ident.churchofjesuschrist.org/sso/UI/Login')
-        driver.find_element_by_id('IDToken1').send_keys(USERNAME)
-        driver.find_element_by_id('IDToken2').send_keys(password)
-        driver.find_element_by_id('login-submit-button').click()
-        excludes = ['httpOnly', 'expiry']
-        for c in driver.get_cookies():
-            for value in excludes:
-                if value in c:
-                    del(c[value])
-            s.cookies.set(**c)
+#
+# NOTE: because of a difference in the way that the site does authentication
+# now I can't figure out how to do the automatic fetching of the ward directory
 
-    def get_unit(self, s):
-        r = s.get(
-            'https://directory.churchofjesuschrist.org/api/v4/user',
-            verify=False
-        )
-        return r.json()["homeUnits"][0]
+    # def get_driver(self):
+    #     options = Options()
+    #     options.add_argument('--headless')
+    #     exe = os.path.join(
+    #         os.path.dirname(os.path.realpath(__file__)),
+    #         'chromedriver'
+    #     )
+    #     return webdriver.Chrome(exe, chrome_options=options)
 
-    def get_directory(self, s, unit_id):
-        return s.get(
-            'https://directory.churchofjesuschrist.org/api/v4/households',
-            params={
-                'unit': unit_id
-            },
-            verify=False
-        ).json()
+    # def login(self, s):
+    #     filename = os.path.join(DIRPATH, 'ldspass')
+    #     password = self.get_password(filename)
+    #     driver = self.get_driver()
+    #     driver.get('https://ident.churchofjesuschrist.org/sso/UI/Login')
+    #     driver.find_element_by_id('IDToken1').send_keys(USERNAME)
+    #     driver.find_element_by_id('IDToken2').send_keys(password)
+    #     driver.find_element_by_id('login-submit-button').click()
+    #     excludes = ['httpOnly', 'expiry']
+    #     for c in driver.get_cookies():
+    #         # print('{}:{}'.format(c["name"], c["value"]))
+    #         for value in excludes:
+    #             if value in c:
+    #                 del(c[value])
+    #         s.cookies.set(**c)
+
+    # def get_unit(self, s):
+    #     r = s.get(
+    #         'https://directory.churchofjesuschrist.org/api/v4/user',
+    #         verify=False
+    #     )
+    #     return r.json()["homeUnits"][0]
+
+    # def get_directory(self, s, unit_id):
+    #     return s.get(
+    #         'https://directory.churchofjesuschrist.org/api/v4/households',
+    #         params={
+    #             'unit': unit_id
+    #         },
+    #         verify=False
+    #     ).json()
+
+    def parse_directory(self):
+        with open('directory.json') as f:
+            return json.loads(f.read())
 
     def get_first_last(self, name):
         num = name.count(' ')
@@ -142,14 +155,23 @@ class Lds(object):
         member['first'] = first
         member['last'] = last
 
+    # def get_members(self):
+    #     if len(self.members) == 0:
+    #         with requests.Session() as s:
+    #             self.login(s)
+    #             # directory = self.get_directory(s, self.get_unit(s))
+    #             directory = self.parse_directory()
+    #             self.members = [m for h in directory for m in h['members']]
+    #             for m in self.members:
+    #                 self.augment_first_last(m)
+    #     return self.members
+
     def get_members(self):
         if len(self.members) == 0:
-            with requests.Session() as s:
-                self.login(s)
-                directory = self.get_directory(s, self.get_unit(s))
-                self.members = [m for h in directory for m in h['members']]
-                for m in self.members:
-                    self.augment_first_last(m)
+            directory = self.parse_directory()
+            self.members = [m for h in directory for m in h['members']]
+            for m in self.members:
+                self.augment_first_last(m)
         return self.members
 
     def get_member_parts(self, m):
