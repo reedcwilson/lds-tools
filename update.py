@@ -326,6 +326,7 @@ def main():
                     group)
                 contacts.append(new_contact)
     manager.add_contacts(contacts)
+    print("detected {} ward contacts".format(len(members)))
     print("finished adding {} contacts: {}".format(
         len(contacts),
         datetime.datetime.now().strftime("%B %d, %Y %I:%M %p"))
