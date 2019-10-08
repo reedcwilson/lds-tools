@@ -15,6 +15,7 @@ from oauth2client import tools
 from oauth2client.file import Storage
 # from selenium import webdriver
 # from selenium.webdriver.chrome.options import Options
+import time
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -149,11 +150,26 @@ class Lds(object):
         else:
             return name, ""
 
-    def augment_first_last(self, member):
+    def take_household(self, h, m, v):
+        if (
+            m['head'] and
+            v not in m and
+            v in h and
+            h[v] not in [m_[v] for m_ in h['members'] if v in m_]
+        ):
+            m[v] = h[v]
+
+    def augment(self, member):
         first, last = self.get_first_last(member['displayName'])
         member['first_last'] = u'{} {}'.format(first, last)
         member['first'] = first
         member['last'] = last
+        h_id = member['householdUuid']
+        household = self.households[h_id]
+        # make the member's info the household info if the member is a
+        # household head and no other member has the same info
+        self.take_household(household, member, 'phone')
+        self.take_household(household, member, 'email')
 
     # def get_members(self):
     #     if len(self.members) == 0:
@@ -163,18 +179,19 @@ class Lds(object):
     #             directory = self.parse_directory()
     #             self.members = [m for h in directory for m in h['members']]
     #             for m in self.members:
-    #                 self.augment_first_last(m)
+    #                 self.augment(m)
     #     return self.members
 
     def get_members(self):
         if len(self.members) == 0:
             directory = self.parse_directory()
+            self.households = {h['uuid']: h for h in directory}
             self.members = [m for h in directory for m in h['members']]
             for m in self.members:
-                self.augment_first_last(m)
+                self.augment(m)
         return self.members
 
-    def get_member_parts(self, m):
+    def partify(self, m):
         fl = m['first_last']
         first = m['first']
         last = m['last']
@@ -299,34 +316,47 @@ def numberify(contacts):
     return numbers
 
 
+def report(members):
+    print("ward contacts: {}".format(len(members)))
+    numbers = sum(1 for m in members if 'phone' in m)
+    print('members with phone numbers: {}'.format(numbers))
+    emails = sum(1 for m in members if 'email' in m)
+    print('members with email addresses: {}'.format(emails))
+
+
 def main():
     # try to get the members first so we don't delete what we already have just
     # to fail
     lds = Lds()
     members = lds.get_members()
+    report(members)
 
     manager = ContactsManager()
     google_contacts = manager.get_contacts()
     group = manager.delete_group_contacts('ward', google_contacts)
+    time.sleep(3)  # wait for eventual consistency
     google_contacts = manager.get_contacts()
     phone_numbers = numberify(google_contacts)
+    print('phone numbers in contacts: {}'.format(len(phone_numbers)))
     contacts = []
     for member in members:
-        first_last, first, last, email, phone = lds.get_member_parts(member)
-        # if they have contact method
-        if email or phone:
-            # if we don't already have them as a contact
-            if phone not in phone_numbers:
-                new_contact = manager.create_contact(
-                    first_last,
-                    first,
-                    last,
-                    email,
-                    phone,
-                    group)
-                contacts.append(new_contact)
+        try:
+            first_last, first, last, email, phone = lds.partify(member)
+            # if they have contact method
+            if email or phone:
+                # if we don't already have them as a contact
+                if phone not in phone_numbers:
+                    new_contact = manager.create_contact(
+                        first_last,
+                        first,
+                        last,
+                        email,
+                        phone,
+                        group)
+                    contacts.append(new_contact)
+        except Exception as e:
+            print(e)
     manager.add_contacts(contacts)
-    print("detected {} ward contacts".format(len(members)))
     print("finished adding {} contacts: {}".format(
         len(contacts),
         datetime.datetime.now().strftime("%B %d, %Y %I:%M %p"))
