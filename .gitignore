@@ -3,6 +3,8 @@ ldspass
 members
 client_secret.json
 directory.json
+token.pickle
+credentials.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
